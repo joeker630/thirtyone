@@ -620,16 +620,29 @@ function onMsg(topic,txt){
     if(!S||st.v>S.v||(st.v===S.v&&String(st.w||'')>String(S.w||''))){S=st;clearTimeout(noTableT);netStatus=null;render();schedule();trySeat()}
     return;
   }
-  if(topic.startsWith(`${base}/on/`)){const k=topic.slice(base.length+4);if(txt)online.add(k);else online.delete(k);render();schedule();return}
+  if(topic.startsWith(`${base}/on/`)){const k=topic.slice(base.length+4);if(txt)online.add(k);else online.delete(k);render();schedule();trySeat();return}
   if(topic===`${base}/zap`){let m;try{m=JSON.parse(txt)}catch(e){return}
     if(m&&typeof m.k==='string'&&S&&S.ph==='play'){const i=S.P.findIndex(p=>p.k===m.k);if(i>=0)playZap(i,String(m.f||'Someone').slice(0,14))}return}
   if(topic===`${base}/emo`){let m;try{m=JSON.parse(txt)}catch(e){return}
     if(m&&m.p!==myKey&&Number.isInteger(m.i)&&EMO[m.e]&&S&&S.P[m.i]&&S.ph!=='lobby')playEmote(m.i,m.e)}
 }
+// the same person coming back from another browser or app (new id, same name) gets their old seat back
+let dupWarned=false;
+function sameNameSeat(){
+  const nm=(myName||'').trim().toLowerCase();if(!nm||!S)return -1;
+  return S.P.findIndex(p=>!p.bot&&p.k!==myKey&&(p.nm||'').trim().toLowerCase()===nm&&!online.has(p.k));
+}
 function trySeat(){
-  if(!wantSeat||!S||S.ph!=='lobby'||S.P.some(p=>p.k===myKey)||S.P.length>=MAX)return;
+  if(!wantSeat||!S||S.P.some(p=>p.k===myKey))return;
   clearTimeout(seatT);
-  seatT=setTimeout(()=>{if(wantSeat&&S&&S.ph==='lobby'&&!S.P.some(p=>p.k===myKey)&&S.P.length<MAX){S.P.push({k:myKey,nm:myName||'Player',l:0,h:[]});publish()}},150+Math.random()*700);
+  seatT=setTimeout(()=>{
+    if(!wantSeat||!S||S.P.some(p=>p.k===myKey))return;
+    const j=sameNameSeat();
+    if(j>=0){const old=S.P[j].k;S.P[j].k=myKey;if(S.hk===old)S.hk=myKey;S.msg=`${S.P[j].nm} is back at the table.`;publish();return}
+    const nm=(myName||'').trim().toLowerCase();
+    if(nm&&S.P.some(p=>!p.bot&&(p.nm||'').trim().toLowerCase()===nm)){if(!dupWarned){dupWarned=true;toast(`${myName} is already seated, probably in another window. Use a different name to join as a new player.`)}return}
+    if(S.ph==='lobby'&&S.P.length<MAX){S.P.push({k:myKey,nm:myName||'Player',l:0,h:[]});publish()}
+  },150+Math.random()*700);
 }
 // whoever is first in seat order among players with the page open runs the computer players
 function isDriver(){
@@ -1371,7 +1384,7 @@ document.addEventListener('click',e=>{
   if(a==='bot'&&amHost){addBot();return}
   if(a==='kick'&&amHost){S.P.splice(+arg,1);publish();return}
   if(a==='startgame'&&S.P.length>=2){startGame();return}
-  if(a==='sit'){wantSeat=true;if(S.ph==='lobby'&&!S.P.some(p=>p.k===myKey)&&S.P.length<MAX){S.P.push({k:myKey,nm:myName||'Player',l:0,h:[]});publish()}return}
+  if(a==='sit'){wantSeat=true;trySeat();return}
   if(a==='unsit'){wantSeat=false;const i=S.P.findIndex(p=>p.k===myKey);if(i>=0&&S.ph==='lobby'){S.P.splice(i,1);publish()}return}
   if(a==='next'){if(amHost)startRound();else send({t:'next'});return}
   if(a==='again'){if(amHost)startGame();else send({t:'again'});return}
