@@ -337,6 +337,19 @@ input[type=text]{font:inherit;font-size:17px;padding:12px 14px;border-radius:12p
   border:1.5px solid color-mix(in srgb,var(--print) 60%,transparent);background:#0b1512e6;color:var(--print);display:grid;place-items:center;padding:0;box-shadow:0 4px 12px #000a;cursor:pointer}
 .mutefab svg{width:22px;height:22px}
 .mutefab.off{color:var(--danger);border-color:var(--danger)}
+.bdwrap{position:relative;display:inline-block;flex:none;animation:bdwig 2.4s ease-in-out infinite;transform-origin:20% 60%}
+.bdwrap .bigd{width:42px;height:21px;display:block;filter:drop-shadow(0 2px 2px #000a)}
+.bdwrap.big .bigd{width:66px;height:33px}
+.bdwrap b{position:absolute;right:-6px;top:-8px;background:var(--chip);color:#fff;font-size:10px;border-radius:999px;padding:0 4px}
+@keyframes bdwig{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(5deg)}}
+.hand .bdwrap{position:absolute;right:-4px;bottom:60px;z-index:4}
+.bdcele{display:flex;align-items:center;gap:12px;background:#0006;border:1.5px solid var(--brass);border-radius:14px;padding:10px 12px}
+.bdcele .bdwrap .bigd{width:100px;height:50px}
+.bdcele b{font-family:var(--display);font-weight:400;color:var(--brass);font-size:20px;display:block}
+.blindbar{display:flex;gap:8px;width:100%;justify-content:center;padding-right:50px;box-sizing:border-box}
+.blindbar .btn{flex:1;max-width:180px}
+.btn.red{background:linear-gradient(180deg,#e0574a,var(--chip));color:#fff;box-shadow:0 3px 0 #7a1a12,0 0 18px #ff6a5a88}
+.tag.blind{background:#111;color:#ffe066;border:1px solid #ffe066}
 .banner{background:color-mix(in srgb,var(--danger) 25%,#000);border:1px solid var(--danger);border-radius:12px;padding:8px 12px;display:flex;gap:10px;align-items:center;font-size:14px;z-index:6}
 .banner span{flex:1}
 .autob{position:absolute;left:50%;transform:translateX(-50%);bottom:4px;z-index:6}
@@ -369,16 +382,17 @@ const ALLSET=new Set(ALL);
 function valid(st){try{
   const okc=c=>typeof c==='string'&&ALLSET.has(c), int=(x,lo,hi)=>Number.isInteger(x)&&x>=lo&&x<=hi;
   if(!int(st.ep,0,1e9)||!int(st.v,0,1e12)||!Array.isArray(st.P)||st.P.length>MAX||!Array.isArray(st.dis)||!st.dis.every(okc))return false;
-  for(const p of st.P){if(!p||typeof p.nm!=='string'||typeof p.k!=='string'||!Array.isArray(p.h)||p.h.length>4||!p.h.every(okc)||!int(p.l,0,5))return false}
+  for(const p of st.P){if(p&&p.bd!=null&&!(Number.isInteger(p.bd)&&p.bd>=0&&p.bd<100))return false;if(p&&p.bl!=null&&typeof p.bl!=='boolean')return false;if(!p||typeof p.nm!=='string'||typeof p.k!=='string'||!Array.isArray(p.h)||p.h.length>4||!p.h.every(okc)||!int(p.l,0,5))return false}
   if(st.taken!=null&&!okc(st.taken))return false;if(st.newc!=null&&!okc(st.newc))return false;
-  const c=st.cfg;if(!c||![3,4,5].includes(c.lives)||![1,2].includes(c.k31)||![1,2].includes(c.hu)||![1,2].includes(c.hu31)||(c.trip!=null&&![30,30.5].includes(c.trip)))return false;
+  const c=st.cfg;if(!c||![3,4,5].includes(c.lives)||![1,2].includes(c.k31)||![1,2].includes(c.hu)||![1,2].includes(c.hu31)||(c.trip!=null&&![30,30.5].includes(c.trip))||(c.blind!=null&&![0,1].includes(c.blind)))return false;
   if(!['lobby','play','round','over'].includes(st.ph)||!int(st.cur,0,MAX)||!int(st.knock,-1,MAX)||!int(st.round,0,1e6))return false;
   if(typeof st.msg!=='string'||typeof st.code!=='string'||typeof st.host!=='string')return false;
   if(st.last!=null){const l=st.last;if(!int(l.i,0,MAX)||(l.tk!=null&&!okc(l.tk))||(l.th!=null&&!okc(l.th)))return false}
-  if(st.res){const r=st.res;if(typeof r.title!=='string'||typeof r.line!=='string'||!Array.isArray(r.rows)||!Number.isInteger(r.win))return false;
+  if(st.res){const r=st.res;if(r.bdw!=null&&!Number.isInteger(r.bdw))return false;if(typeof r.title!=='string'||typeof r.line!=='string'||!Array.isArray(r.rows)||!Number.isInteger(r.win))return false;
     for(const x of r.rows)if(!x||!int(x.i,0,st.P.length-1)||typeof x.sc!=='number'||typeof x.loss!=='number'||typeof x.note!=='string')return false}
   if(st.seen&&typeof st.seen!=='object')return false;
   if(st.tt!=null&&typeof st.tt!=='number')return false;
+  if(st.bk!=null&&!Number.isInteger(st.bk))return false;
   if(st.on!=null&&(!Array.isArray(st.on)||st.on.length>MAX+2||!st.on.every(x=>typeof x==='string')))return false;
   return true}catch(e){return false}}
 
@@ -412,12 +426,12 @@ function publish(){
   render();schedule();
 }
 function startGame(){
-  S.P.forEach(p=>{p.l=S.cfg.lives;p.h=[]});
+  S.P.forEach(p=>{p.l=S.cfg.lives;p.h=[];p.bd=0});
   S.round=0;S.starter=Math.floor(Math.random()*S.P.length);S.res=null;
   startRound();
 }
 function startRound(){
-  S.round++;S.dis=[];S.P.forEach(p=>p.h=[]);
+  S.round++;S.dis=[];S.bk=-1;S.P.forEach(p=>{p.h=[];p.bl=!!S.cfg.blind&&!p.bot&&p.l>0});
   for(let k=0;k<3;k++)for(const p of S.P)if(p.l>0)p.h.push(drawCard());
   S.dis.push(drawCard());
   if(S.round>1||S.P[S.starter].l<=0)S.starter=nextAlive(S.starter);
@@ -427,9 +441,14 @@ function startRound(){
   if(b!==undefined)return endRound(b);
   publish();
 }
-function doKnock(){
+function blindKnock(){
+  const p=S.P[S.cur];S.bk=S.cur;doKnock(true);
+}
+function flipCards(){const p=S.P[S.cur];if(p.bl){p.bl=false;S.msg=`${p.nm} looked at their cards.`;publish()}}
+function doKnock(blind){
   const p=S.P[S.cur];S.knock=S.cur;S.left=aliveIdx().length-1;S.last={i:S.cur,kn:1};
-  S.msg=`${p.nm} knocks. Everyone else gets one more turn.`;
+  S.msg=blind?`${p.nm} BLIND KNOCKS without looking! Everyone else gets one more turn.`:`${p.nm} knocks. Everyone else gets one more turn.`;
+  if(blind)S.last={i:S.cur,kn:1,bk:1};
   advance();
 }
 function take(src){
@@ -475,7 +494,10 @@ function endRound(blitz){
   }
   rows.forEach(r=>{S.P[r.i].l=Math.max(0,S.P[r.i].l-r.loss)});
   const left=aliveIdx();
-  S.res={title,line,rows,win:left.length===1?left[0]:(left.length===0?-2:-1)};
+  let bdw=-1;
+  if(S.bk>=0){const r=rows.find(x=>x.i===S.bk);if(r&&r.loss===0){S.P[S.bk].bd=(S.P[S.bk].bd||0)+1;bdw=S.bk;r.note='blind knock'}}
+  S.P.forEach(p=>{p.bl=false});
+  S.res={title,line,rows,win:left.length===1?left[0]:(left.length===0?-2:-1),bdw};
   S.ph=left.length<=1?'over':'round';
   publish();
 }
@@ -487,10 +509,11 @@ function schedule(){
 }
 function botAct(auto){
   if(!amHost||S.ph!=='play')return;
-  const p=S.P[S.cur];
+  const p=S.P[S.cur];if(p.bl)p.bl=false;
   if(S.step==='start'&&!auto&&Math.random()<.08)botEmote(S.cur);
   if(S.step==='start'){
     const laps=Math.floor(S.turns/aliveIdx().length), sc=score(p.h);
+    if(!auto&&S.cfg.blind&&S.knock<0&&laps===0&&Math.random()<.12){S.bk=S.cur;return doKnock(true)}
     if(!auto&&S.knock<0&&laps>=1&&sc>=Math.max(21,(p.n||26)-laps))return doKnock();
     const top=S.dis[S.dis.length-1];
     const withTop=top?bestDiscard([...p.h,top],top):{score:-1};
@@ -515,7 +538,10 @@ function hostAction(key,a){
   }
   if(S.ph!=='play')return;
   const i=S.P.findIndex(p=>p.k===key);if(i!==S.cur)return;
-  if(a.t==='knock'&&S.step==='start'&&S.knock<0)doKnock();
+  if(a.t==='bknock'&&S.step==='start'&&S.knock<0&&S.P[i].bl)blindKnock();
+  else if(a.t==='flip'&&S.step==='start'&&S.P[i].bl)flipCards();
+  else if(S.P[i].bl)return;
+  else if(a.t==='knock'&&S.step==='start'&&S.knock<0)doKnock();
   else if((a.t==='deck'||a.t==='pile')&&S.step==='start')take(a.t);
   else if(a.t==='throw'&&S.step==='discard')throwCard(+a.i);
 }
@@ -660,6 +686,24 @@ const FIST=`<svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true">
   </g>
   <path d="M15 31c3 1.4 7 1.4 10 0" stroke="#5a2a14" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".55"/>
 </svg>`;
+const BIGD=`<svg class="bigd" viewBox="-4 0 84 42" aria-label="Big dick trophy"><title>Big dick: won a blind knock</title>
+  <g stroke="#2a1508" stroke-linecap="round" fill="none" stroke-width="1.7">
+    <path d="M8 9c-2-3 1-5 0-8M13 7c-1-3 2-4 1-7M19 7c0-3 3-4 2-6M25 8c1-3 4-3 3-6M31 9c1-3 4-2 4-5M38 10c2-2 4-1 5-4M45 10c2-2 4-1 5-3M8 27c-2 3 1 5 0 8M14 29c-1 3 2 4 1 6M21 29c0 3 3 3 2 6M28 28c1 3 4 3 3 6M35 27c1 3 4 2 4 5M42 27c2 2 4 1 5 4"/>
+  </g>
+  <g stroke="#2a1508" stroke-linecap="round" fill="none" stroke-width="1.6">
+    <path d="M-1 30c-3 1-4 4-3 6M1 35c-2 2-2 5 0 6M6 39c-1 2 0 4 2 4M12 40c0 2 2 3 4 2M18 41c1 2 3 2 5 0M24 39c2 1 4 0 5-2M28 34c2 0 4-2 4-4"/>
+  </g>
+  <circle cx="8" cy="30" r="9" fill="#d9907a" stroke="#7a3b2a" stroke-width="1.5"/>
+  <circle cx="19" cy="32" r="9" fill="#e09a83" stroke="#7a3b2a" stroke-width="1.5"/>
+  <path d="M13 24v13" stroke="#7a3b2a" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+  <g stroke="#2a1508" stroke-width="1.2" stroke-linecap="round" fill="none"><path d="M4 33l-2 2M8 36l-1 2M15 37l0 2M21 37l1 2M25 34l2 1M6 27l-2-1M23 28l2-1"/></g>
+  <path d="M6 18c0-8 6-11 14-11h38c9 0 17 4 17 11s-8 11-17 11H20C12 29 6 26 6 18z" fill="#e8a48a" stroke="#7a3b2a" stroke-width="1.6"/>
+  <path d="M58 7c9 0 17 4 17 11s-8 11-17 11c4-3 6-7 6-11s-2-8-6-11z" fill="#d98a72" stroke="#7a3b2a" stroke-width="1.4"/>
+  <path d="M68 17h5" stroke="#7a3b2a" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M12 14q20-5 44 0" stroke="#fff" stroke-opacity=".45" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <g stroke="#2a1508" stroke-width="1" stroke-linecap="round" fill="none"><path d="M16 20c1 2 3 2 4 0M27 22c1 2 3 2 4 0M38 20c1 2 3 2 4 0M48 22c1 2 3 2 4 0"/></g>
+</svg>`;
+const bdHTML=(p,big)=>p&&p.bd>0?`<span class="bdwrap ${big?'big':''}">${BIGD}${p.bd>1?`<b>×${p.bd}</b>`:''}</span>`:'';
 const TENT=`<svg class="tent" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true">
   <polygon points="44,2 48,19 40,19" fill="#5f7f50"/>
   <polygon points="10,2 3,19 13,19" fill="#2f4727"/>
@@ -1005,6 +1049,7 @@ function lobbyHTML(){
       ${segHTML('Heads-up: failed knock loses','cfg-hu',lv,c.hu,ro)}
       ${segHTML('Heads-up: knocker loses if other hits 31','cfg-hu31',lv,c.hu31,ro)}
       ${segHTML('Three of a kind scores','cfg-trip',[[30,'30'],[30.5,'30½']],c.trip===30.5?30.5:30,ro)}
+      ${segHTML('Blind knock','cfg-blind',[[0,'Off'],[1,'On: deal face down']],c.blind?1:0,ro)}
       ${iCanDeal()?`<button class="btn" data-a="startgame" ${S.P.length<2?'disabled':''}>${S.P.length<2?'Need at least 2 players':'Deal'}</button>`:`<p class="note">${mi>=0?'You have a seat. Waiting for the host to deal.':'Take a seat to play, or stay to watch.'}</p>`}
     </div>
     ${overlay==='rules'?rulesHTML():''}
@@ -1033,7 +1078,7 @@ function bubbleFor(i){
   const l=S.last;
   if(S.cur===i&&S.P[i].k!==myKey&&S.step==='start')return `<div class="bubble"><span class="dots"><span></span><span></span><span></span></span></div>`;
   if(!l||l.i!==i)return S.knock===i?`<div class="bubble knock">KNOCK</div>`:'';
-  if(l.kn)return `<div class="bubble knock">KNOCK!</div>`;
+  if(l.kn)return `<div class="bubble knock">${l.bk?'BLIND KNOCK!':'KNOCK!'}</div>`;
   const cs=c=>`<span class="${red(c)?'r':''}">${pretty(c)}</span>`;
   let t=l.tk?`took ${cs(l.tk)}`:l.dr?'drew':'';
   if(l.th)t+=`${t?' · ':''}threw ${cs(l.th)}`;
@@ -1065,7 +1110,8 @@ function gameHTML(){
   const top=S.dis[S.dis.length-1], under=S.dis.slice(-3,-1);
   const myTurn=me&&S.ph==='play'&&S.cur===mi;
   const waiting=!amHost&&pendingV===S.v;
-  const canDraw=myTurn&&S.step==='start'&&!waiting;
+  const canDraw=myTurn&&S.step==='start'&&!waiting&&!(me&&me.bl);
+  const blindChoice=myTurn&&S.step==='start'&&me&&me.bl;
   const n=S.P.length;
   const others=mi>=0?[...Array(n-1)].map((_,k)=>(mi+1+k)%n):[...Array(n)].map((_,k)=>k);
   const cur=S.P[S.cur];
@@ -1088,12 +1134,14 @@ function gameHTML(){
     const side=x<32?'sl':x>68?'sr':'';
     return `<div data-seat="${i}" class="seat ${side} ${S.cur===i&&S.ph==='play'?'turn':''} ${p.l<=0?'out':''} ${away?'away':''}" style="left:clamp(26px,${x.toFixed(1)}%,calc(100% - 26px));top:${y.toFixed(1)}%">
       <div style="position:relative">${avatar(p,i)}${bubbleFor(i)}</div>
-      <div class="sname">${esc(p.nm)}</div><div class="srow"><div class="fan2">${fan}</div>${logsHTML(p)}</div></div>`;
+      <div class="sname">${esc(p.nm)}</div><div class="srow"><div class="fan2">${fan}</div>${logsHTML(p)}${bdHTML(p)}</div>${p.bl&&S.ph==='play'?'<span class="tag blind">Blind</span>':''}</div>`;
   }).join('');
 
   let hint='';
   if(S.ph==='play'&&me&&me.l>0){
-    if(myTurn&&S.step==='start')hint=S.knock>=0?`<b>${esc(S.P[S.knock].nm)} knocked.</b> Last turn: tap the deck or the face-up card.`:`Your turn: tap the deck or the face-up card, or knock.`;
+    if(blindChoice)hint=S.knock>=0?'Your cards are face down. Flip them to take your last turn.':'Your cards are face down. Blind knock without looking, or flip them and play.';
+    else if(me.bl)hint='Your cards are face down until your turn.';
+    else if(myTurn&&S.step==='start')hint=S.knock>=0?`<b>${esc(S.P[S.knock].nm)} knocked.</b> Last turn: tap the deck or the face-up card.`:`Your turn: tap the deck or the face-up card, or knock.`;
     else if(myTurn)hint=S.taken?`Throw a card other than the ${pretty(S.taken)}.`:`Tap a card to throw it face up.`;
     else hint=`${esc(cur.nm)} is playing…`;
   } else if(me&&me.l<=0)hint='You\'re out of lives. Watch the rest of the game.';
@@ -1104,13 +1152,14 @@ function gameHTML(){
     const h=me.h, k=h.length;
     const base=k===4?h.filter(c=>c!==bestDiscard(h,S.taken).card):h, counts=countSet(base);
     const pick=myTurn&&S.step==='discard'&&!waiting;
+    if(me.bl){hand=h.map((c,pos)=>{const off=pos-(k-1)/2,rot=off*11,dx=off*62,dy=Math.abs(off)*Math.abs(off)*5;return `<div class="slotc" style="transform:translateX(calc(-50% + ${dx}%)) translateY(${dy}px) rotate(${rot}deg)">${backHTML()}</div>`}).join('')} else
     hand=handOrder(h).map((i,pos)=>{const c=h[i];
       const off=pos-(k-1)/2, rot=off*(k===4?9:11), dx=off*(k===4?52:62), dy=Math.abs(off)*Math.abs(off)*5;
       const cls=[counts.has(c)?'counts':'',pick&&c!==S.taken?'pick':'',pick&&c===S.taken?'locked':'',newFlag&&c===S.newc?'new':''].join(' ');
       return `<div class="slotc" style="transform:translateX(calc(-50% + ${dx}%)) translateY(${dy}px) rotate(${rot}deg);margin-left:0">${cardHTML(c,cls,`data-a="throw" data-i="${i}" ${pick?'':'tabindex="-1"'}`)}</div>`;
     }).join('');
   }
-  const shown=me&&me.l>0?(me.h.length===4?score(me.h.filter(c=>c!==bestDiscard(me.h,S.taken).card)):score(me.h)):null;
+  const shown=me&&me.l>0&&me.bl?'?':me&&me.l>0?(me.h.length===4?score(me.h.filter(c=>c!==bestDiscard(me.h,S.taken).card)):score(me.h)):null;
 
   const prevShown=lastShown;setTimeout(()=>{lastShown=shown},0);
   return `
@@ -1143,13 +1192,14 @@ function gameHTML(){
   </div>
   <section class="mine ${myTurn?'turn':''}">
 
-    ${me&&me.l>0?`<div class="hand">${hand}${logsHTML(me,true)}</div>`:''}
+    ${me&&me.l>0?`<div class="hand">${hand}${logsHTML(me,true)}${bdHTML(me,true)}</div>`:''}
     <div class="minebar">
       ${me?`<div class="who" data-seat="${mi}">${avatar(me,mi)}<div><div class="nm">${esc(me.nm)}</div>${me.l<=0?'<div class="note">Out of lives</div>':''}</div></div>`:''}
       ${shown!=null?`<div class="scorewrap"><div class="score ${prevShown!==null&&shown!==prevShown?'bump':''} ${shown>=27?'hot':''}" aria-label="Hand total ${shown}">${fmt(shown)}</div><span>Your hand</span></div>`:''}
       ${me&&me.l>0?`<button class="knockbtn" data-a="knock" aria-label="Knock" title="Knock" ${canDraw&&S.knock<0?'':'disabled'}>${FIST}</button>`:''}
     </div>
     ${myTurn?'<div class="yourturn">YOUR TURN</div>':''}
+    ${blindChoice?`<div class="blindbar">${S.knock<0?'<button class="btn red" data-a="bknock">Blind knock</button>':''}<button class="btn" data-a="flip">Flip &amp; play</button></div>`:''}
     <div class="hint">${hint}</div>
     <div class="turnclock" id="tclock">${clockText()}</div>
     ${me?`<div class="emobar">${Object.entries(EMO).map(([k,v])=>`<button data-a="emo" data-i="${k}" aria-label="${v.label}">${v.icon}${v.label}</button>`).join('')}</div>`:''}
@@ -1164,6 +1214,7 @@ function resultHTML(){
   } else foot=iCanDeal()?`<button class="btn" data-a="next">Deal next round</button>`:`<p class="note">Waiting for the host to deal the next round.</p>`;
   return `<div class="overlay"><div class="sheet">
     <h2>${esc(r.title)}</h2><p>${esc(r.line)}</p>
+    ${r.bdw>=0&&S.P[r.bdw]?`<div class="bdcele"><span class="bdwrap big">${BIGD}</span><div><b>BIG DICK!</b><span class="note">${esc(S.P[r.bdw].nm)} blind knocked and survived. The trophy sits by their money for the rest of the game.</span></div></div>`:''}
     <div class="res">${r.rows.map(x=>{const p=S.P[x.i];return `<div class="row">
       <div class="pn"><span>${esc(p.nm)}${p.k===myKey?' (you)':''}${x.note?` <span class="tag">${esc(x.note)}</span>`:''}</span><div class="h">${p.h.map(c=>cardHTML(c,'sm','tabindex="-1"')).join('')}</div></div>
       <div class="pts">${fmt(+x.sc||0)}</div>
@@ -1183,6 +1234,7 @@ function rulesHTML(){
       <li>If the knocker beats no one, the knocker loses 2 lives. Otherwise the lowest hand loses 1 (ties all lose 1).</li>
       <li>If someone hits 31 after a knock, the knocker loses ${c.k31} ${c.k31>1?'lives':'life'} and everyone else loses 1.</li>
       <li>Heads-up (2 players left): a failed knock costs ${c.hu} ${c.hu>1?'lives':'life'}, and getting hit by 31 after knocking costs ${c.hu31}.</li>
+      ${c.blind?'<li>Blind knock is on: cards are dealt face down. On your first turn you can blind knock without looking, or flip your cards and play normally. Survive a blind knock without losing a life and you earn the Big Dick trophy.</li>':''}
       <li>Out of lives, out of the game. Last player standing wins.</li>
     </ul>
     <button class="btn" data-a="close">Back to the table</button></div></div>`;
@@ -1276,7 +1328,7 @@ document.addEventListener('click',e=>{
   if(a==='again'){if(amHost)startGame();else send({t:'again'});return}
   if(a==='tolobby'&&amHost){S.ph='lobby';S.res=null;S.last=null;S.P.forEach(p=>{p.h=[];p.l=0});S.msg='';publish();return}
   if(a==='auto'&&amHost){botAct(true);return}
-  if(['knock','deck','pile','throw'].includes(a)){
+  if(['knock','deck','pile','throw','bknock','flip'].includes(a)){
     const mi=myIdx();if(mi<0||S.cur!==mi||S.ph!=='play')return;
     if(a==='throw'&&S.P[mi].h[+arg]===S.taken)return;
     send({t:a,i:arg});
