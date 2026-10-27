@@ -1135,7 +1135,7 @@ function gameHTML(){
   const n=S.P.length;
   const others=mi>=0?[...Array(n-1)].map((_,k)=>(mi+1+k)%n):[...Array(n)].map((_,k)=>k);
   const cur=S.P[S.cur];
-  const curAway=amHost&&!solo&&!cur.bot&&cur.k!==myKey&&!keys.has(cur.k)&&S.ph==='play';
+  const curAway=amHost&&!solo&&!cur.bot&&cur.k!==myKey&&!keys.has(cur.k)&&S.ph==='play'&&turnSecs()>=AUTO_AFTER;
   const showTake=false;
   const slap=top&&top!==lastTop;lastTop=top;
   const newFlag=me&&S.newc&&S.newc!==lastNew;lastNew=S.newc;
@@ -1274,7 +1274,7 @@ function muteFab(){
 
 /* ===== turn clock, shock ===== */
 const BOLT='<svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z" fill="#ffe066" stroke="#7a5a00" stroke-width="1.2" stroke-linejoin="round"/></svg>';
-const SHOCK_AFTER=60;
+const SHOCK_AFTER=60, AUTO_AFTER=120;
 let shockCool=0, lastLate=false;
 const turnSecs=()=>S&&S.ph==='play'&&S.tt?Math.max(0,Math.floor((Date.now()-S.tt)/1000)):0;
 const mmss=t=>Math.floor(t/60)+':'+String(t%60).padStart(2,'0');
@@ -1291,7 +1291,7 @@ function canShock(){
 setInterval(()=>{
   const el=document.getElementById('tclock');
   if(el){el.innerHTML=clockText();el.classList.toggle('late',turnSecs()>=SHOCK_AFTER)}
-  const late=canShock();if(late!==lastLate){lastLate=late;render()}
+  const late=canShock()+'|'+(turnSecs()>=AUTO_AFTER);if(late!==lastLate){lastLate=late;render()}
   if(S&&S.ph==='play'&&myIdx()===S.cur)document.title=(Math.floor(Date.now()/1000)%2?'▶ YOUR TURN · ':'')+'Thirty-One';
   else if(document.title!=='Thirty-One')document.title='Thirty-One';
 },1000);
