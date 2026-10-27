@@ -1039,6 +1039,27 @@ function bubbleFor(i){
   if(l.th)t+=`${t?' · ':''}threw ${cs(l.th)}`;
   return t?`<div class="bubble">${t}</div>`:(S.knock===i?`<div class="bubble knock">KNOCK</div>`:'');
 }
+// display order like a person holds cards: suits together (biggest suit first),
+// and matching ranks next to each other for a three-of-a-kind try
+function handOrder(h){
+  const RO=r=>RANKS.indexOf(r)===0?13:RANKS.indexOf(r);
+  const rc=r=>h.filter(c=>rk(c)===r).length;
+  const groups=SK.split('').map(s=>({s,c:h.map((c,i)=>i).filter(i=>su(h[i])===s)})).filter(g=>g.c.length);
+  const tot=g=>g.c.reduce((a,i)=>a+val(h[i]),0);
+  const multi=groups.filter(g=>g.c.length>1).sort((a,b)=>b.c.length-a.c.length||tot(b)-tot(a));
+  // singles: pairs of the same rank stay together
+  const singles=groups.filter(g=>g.c.length===1).map(g=>g.c[0]).sort((x,y)=>rc(rk(h[y]))-rc(rk(h[x]))||RO(rk(h[y]))-RO(rk(h[x]))||SK.indexOf(su(h[x]))-SK.indexOf(su(h[y])));
+  const out=[];
+  multi.forEach((g,gi)=>{
+    const byVal=[...g.c].sort((x,y)=>val(h[y])-val(h[x])||RO(rk(h[y]))-RO(rk(h[x])));
+    const paired=byVal.filter(i=>rc(rk(h[i]))>1), rest=byVal.filter(i=>rc(rk(h[i]))<=1);
+    // matching ranks sit at the edge that touches the neighbouring group
+    out.push(...(gi===0?[...rest,...paired]:[...paired,...rest]));
+  });
+  if(out.length&&singles.length){const lastR=rk(h[out[out.length-1]]);singles.sort((x,y)=>(rk(h[y])===lastR)-(rk(h[x])===lastR))}
+  out.push(...singles);
+  return out;
+}
 function gameHTML(){
   const mi=myIdx(), me=mi>=0?S.P[mi]:null, keys=presentKeys();
   const top=S.dis[S.dis.length-1], under=S.dis.slice(-3,-1);
@@ -1083,8 +1104,8 @@ function gameHTML(){
     const h=me.h, k=h.length;
     const base=k===4?h.filter(c=>c!==bestDiscard(h,S.taken).card):h, counts=countSet(base);
     const pick=myTurn&&S.step==='discard'&&!waiting;
-    hand=h.map((c,i)=>{
-      const off=i-(k-1)/2, rot=off*(k===4?9:11), dx=off*(k===4?52:62), dy=Math.abs(off)*Math.abs(off)*5;
+    hand=handOrder(h).map((i,pos)=>{const c=h[i];
+      const off=pos-(k-1)/2, rot=off*(k===4?9:11), dx=off*(k===4?52:62), dy=Math.abs(off)*Math.abs(off)*5;
       const cls=[counts.has(c)?'counts':'',pick&&c!==S.taken?'pick':'',pick&&c===S.taken?'locked':'',newFlag&&c===S.newc?'new':''].join(' ');
       return `<div class="slotc" style="transform:translateX(calc(-50% + ${dx}%)) translateY(${dy}px) rotate(${rot}deg);margin-left:0">${cardHTML(c,cls,`data-a="throw" data-i="${i}" ${pick?'':'tabindex="-1"'}`)}</div>`;
     }).join('');
