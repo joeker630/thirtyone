@@ -78,6 +78,26 @@ header{display:flex;align-items:center;justify-content:space-between;gap:8px;fle
 .seat.away .avatar{filter:grayscale(1) brightness(.7)}
 .avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:17px;color:#fff;position:relative;
   background:var(--av,#556);box-shadow:0 0 0 2px #0008, 0 0 0 4px color-mix(in srgb,var(--av,#556) 40%,#000), 0 4px 10px #000a;text-shadow:0 1px 0 #0006}
+.seat.knocker .avatar{box-shadow:0 0 0 2px #000,0 0 0 4px var(--chip),0 0 20px 6px #ff4a3acc!important}
+.seat .kbadge{position:absolute;right:-8px;bottom:-6px;width:22px;height:22px;border-radius:50%;background:var(--chip);border:2px solid #fff;display:grid;place-items:center;z-index:2;box-shadow:0 2px 4px #000a}
+.seat .kbadge svg{width:16px;height:16px}
+.seat .kbadge.blind{background:#111;border-color:#ffe066}
+.kplate{position:absolute;left:50%;top:2%;transform:translateX(-50%);z-index:4;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 8px;border-radius:999px;white-space:nowrap;
+  background:linear-gradient(180deg,#e0574a,var(--chip));border:2px solid #ffd56b;box-shadow:0 0 0 2px #0008,0 6px 16px #000b,0 0 24px #ff4a3a88;animation:kpulse 1.6s ease-in-out infinite}
+.kplate.blind{background:linear-gradient(180deg,#2a2a2a,#0d0d0d);border-color:#ffe066;box-shadow:0 0 0 2px #0008,0 6px 16px #000b,0 0 24px #ffe06688}
+.kplate .avatar{width:28px;height:28px;font-size:13px}
+.kplate .kt{display:flex;flex-direction:column;line-height:1.05}
+.kplate .kt b{font-family:var(--display);font-weight:400;font-size:15px;color:#fff;letter-spacing:.03em}
+.kplate.blind .kt b{color:#ffe066}
+.kplate .kt span{font-size:10.5px;font-weight:700;color:#ffe9d0;letter-spacing:.04em}
+@keyframes kpulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
+.kmoment{position:fixed;inset:0;z-index:50;pointer-events:none;display:grid;place-items:center;background:radial-gradient(circle at 50% 45%,#0000 0 25%,#0009 70%);animation:fzbg 2s ease both}
+.kmoment .kin{display:flex;flex-direction:column;align-items:center;gap:6px;animation:kslam 2s cubic-bezier(.2,1.5,.4,1) both}
+.kmoment .kin svg{width:96px;height:96px;filter:drop-shadow(0 8px 14px #000)}
+.kmoment .kin b{font-family:var(--display);font-weight:400;font-size:38px;color:#fff;-webkit-text-stroke:2px #0009;text-shadow:0 4px 0 #0008,0 0 24px #ff4a3a;text-align:center;line-height:1.05;padding:0 12px}
+.kmoment.blind .kin b{color:#ffe066;text-shadow:0 4px 0 #0008,0 0 24px #ffe066}
+.kmoment .kin span{font-weight:800;color:#fff;font-size:15px;text-shadow:0 2px 4px #000}
+@keyframes kslam{0%{transform:scale(2.4) translateY(-60px);opacity:0}14%{transform:scale(.92);opacity:1}22%{transform:scale(1.04)}30%{transform:scale(1)}85%{opacity:1}100%{opacity:0;transform:scale(1)}}
 .seat.turn .avatar,.mine.turn .avatar{box-shadow:0 0 0 2px #000, 0 0 0 4px var(--brass), 0 0 18px 4px color-mix(in srgb,var(--brass) 60%,transparent)}
 .seat.turn .avatar::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:2px solid var(--brass);animation:ping 1.4s ease-out infinite}
 @keyframes ping{from{transform:scale(.9);opacity:.9}to{transform:scale(1.25);opacity:0}}
@@ -865,7 +885,7 @@ function sounds(){
   if(p){
     if(S.ph==='play'&&S.round!==p.round)sfx('deal');
     else if(S.ph==='play'){
-      if(last!==p.last&&S.last){if(S.last.kn)sfx('knock');else if(S.last.th&&top!==p.top)sfx('slap');else if(S.last.tk||S.last.dr)sfx('swish')}
+      if(last!==p.last&&S.last){if(S.last.kn){sfx('knock');knockMoment(S.last.i,!!S.last.bk)}else if(S.last.th&&top!==p.top)sfx('slap');else if(S.last.tk||S.last.dr)sfx('swish')}
       if(mi>=0&&S.cur===mi&&S.step==='start'&&(p.cur!==mi||p.ph!=='play')){setTimeout(()=>sfx('turn'),250);try{navigator.vibrate&&navigator.vibrate([90,60,90])}catch(e){}}
     }
     if(p.ph==='play'&&(S.ph==='round'||S.ph==='over')&&S.res){
@@ -1132,8 +1152,9 @@ function gameHTML(){
     const fan=Array.from({length:nc},(_,j)=>`<span class="mback" style="transform:rotate(${(j-(nc-1)/2)*16}deg)"></span>`).join('');
     const fx=x<35?'right:-14px':x>65?'left:-14px':'left:50%;margin-left:-15px;top:auto;bottom:-14px';
     const side=x<32?'sl':x>68?'sr':'';
-    return `<div data-seat="${i}" class="seat ${side} ${S.cur===i&&S.ph==='play'?'turn':''} ${p.l<=0?'out':''} ${away?'away':''}" style="left:clamp(26px,${x.toFixed(1)}%,calc(100% - 26px));top:${y.toFixed(1)}%">
-      <div style="position:relative">${avatar(p,i)}${bubbleFor(i)}</div>
+    const kn=S.ph==='play'&&S.knock===i, kb=kn&&S.bk===i;
+    return `<div data-seat="${i}" class="seat ${side} ${kn?'knocker':''} ${S.cur===i&&S.ph==='play'?'turn':''} ${p.l<=0?'out':''} ${away?'away':''}" style="left:clamp(26px,${x.toFixed(1)}%,calc(100% - 26px));top:${y.toFixed(1)}%">
+      <div style="position:relative">${avatar(p,i)}${kn?`<span class="kbadge ${kb?'blind':''}" title="${kb?'Blind knocked':'Knocked'}">${FIST}</span>`:''}${bubbleFor(i)}</div>
       <div class="sname">${esc(p.nm)}</div><div class="srow"><div class="fan2">${fan}</div>${logsHTML(p)}${bdHTML(p)}</div>${p.bl&&S.ph==='play'?'<span class="tag blind">Blind</span>':''}</div>`;
   }).join('');
 
@@ -1175,6 +1196,7 @@ function gameHTML(){
       <div class="rail"></div><div class="felt"></div>
       <div class="center">
         ${fp.top}
+        ${S.ph==='play'&&S.knock>=0&&S.P[S.knock]?knockPlate():''}
         <div class="piles">
           <button class="pilebtn ${canDraw?'live':''}" data-a="deck" ${canDraw?'':'disabled'} aria-label="Draw from the deck"><div class="deckstack">${backHTML()}${backHTML()}${backHTML()}</div><span class="deckcount">${deckLeft}</span></button>
           <div class="discard">
@@ -1292,6 +1314,21 @@ function playZap(i,from){
   }
   sfx('zap');
   setTimeout(()=>L.remove(),2600);
+}
+
+function knockPlate(){
+  const k=S.knock, p=S.P[k], blind=S.bk===k, me=p.k===myKey;
+  const left=Math.max(0,+S.left||0);
+  return `<div class="kplate ${blind?'blind':''}" role="status">${avatar(p,k)}<div class="kt"><b>${me?'YOU':esc(p.nm).toUpperCase()} ${blind?'BLIND KNOCKED':'KNOCKED'}</b><span>${left===0?'Final turn':left===1?'1 turn left':left+' turns left'}</span></div></div>`;
+}
+function knockMoment(i,blind){
+  const p=S&&S.P[i];if(!p)return;
+  const me=p.k===myKey;
+  const L=document.createElement('div');L.className='kmoment'+(blind?' blind':'');
+  L.innerHTML=`<div class="kin">${FIST}<b>${me?'YOU':esc(p.nm).toUpperCase()}<br>${blind?'BLIND KNOCKED!':'KNOCKED!'}</b><span>${me?'Everyone else gets one more turn.':'Everyone else gets one more turn.'}</span></div>`;
+  document.body.appendChild(L);
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){const app=document.getElementById('app');const f=[];for(let k=0;k<8;k++)f.push({transform:`translate(${Math.random()*8-4}px,${Math.random()*8-4}px)`});f.push({transform:'none'});app&&app.animate(f,{duration:500,delay:250})}
+  setTimeout(()=>L.remove(),2100);
 }
 /* ===== events ===== */
 function needName(){
