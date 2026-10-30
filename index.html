@@ -1331,7 +1331,7 @@ function segHTML(label,act,opts,cur,dis){return `<div class="lbl">${label}</div>
 function lobbyHTML(){
   const mi=myIdx(), keys=presentKeys(), c=S.cfg, ro=!amHost;
   const lv=[[1,'1 life'],[2,'2 lives']];
-  return `<header><div class="logo">31<small>${solo?'Solo':'Table'}</small></div><div class="hbtns">${vidBtns()}<button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div></header>
+  return `<header><div class="logo">31<small>${solo?'Solo':'Table'}</small></div><div class="hbtns">${vidBtns()}${soundBtn()}<button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div></header>
   <div class="page">
     ${solo?'':`<div class="panel" style="flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap">
       <div><div class="lbl">Table code</div><div class="code">${esc(S.code)}</div></div>
@@ -1468,7 +1468,7 @@ function gameHTML(){
   return `
   <header>
     <div class="logo">31<small>Round ${+S.round||0}${solo?'':' · '+esc(S.code)}</small></div>
-    <div class="hbtns">${vidBtns()}<button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div>
+    <div class="hbtns">${vidBtns()}${soundBtn()}<button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div>
   </header>
   ${showTake?`<div class="banner"><span>The host left the table.</span>${mi>=0?'<button class="btn small" data-a="takeover">Host it</button>':''}</div>`:''}
   ${toastMsg?`<div class="banner"><span>${esc(toastMsg)}</span></div>`:''}
@@ -1547,12 +1547,9 @@ function rulesHTML(){
 
 const SPK_ON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
 const SPK_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6"/></svg>';
-function muteFab(){
-  let b=document.getElementById('mutefab');
-  if(!b){b=document.createElement('button');b.id='mutefab';b.className='mutefab';b.dataset.a='mute';document.body.appendChild(b)}
-  b.classList.toggle('off',muted);b.innerHTML=muted?SPK_OFF:SPK_ON;
-  b.setAttribute('aria-label',muted?'Sound is off. Turn sound on':'Mute sound');b.title=muted?'Sound off':'Sound on';
-}
+function muteFab(){const b=document.getElementById('mutefab');if(b)b.remove()}
+// game sound effects on/off, in the header next to the mic and camera
+const soundBtn=()=>`<button class="ghost vbtn sbtn ${muted?'off':''}" data-a="mute" aria-label="${muted?'Sound effects are off. Turn them on':'Turn sound effects off'}" title="${muted?'Sound effects off':'Sound effects on'}">${muted?SPK_OFF:SPK_ON}</button>`;
 
 /* ===== turn clock, shock ===== */
 const BOLT='<svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z" fill="#ffe066" stroke="#7a5a00" stroke-width="1.2" stroke-linejoin="round"/></svg>';
