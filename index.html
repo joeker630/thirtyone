@@ -72,6 +72,23 @@ header{display:flex;align-items:center;justify-content:space-between;gap:8px;fle
 .slot{width:var(--cw);aspect-ratio:5/7;border:1.5px dashed color-mix(in srgb,var(--print) 50%,transparent);border-radius:8px;box-sizing:border-box}
 .dealer{font-size:13px;line-height:1.35;text-align:center;color:var(--ink);text-wrap:balance;min-height:2.7em;max-width:30ch;text-shadow:0 1px 2px #000a;font-style:italic}
 
+
+/* ---------- video chat ---------- */
+.avatar .vv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;background:#000;z-index:1;cursor:zoom-in}
+.avatar .vv.mirror,#vbig .vv.mirror{transform:scaleX(-1)}
+.avatar.live{width:54px;height:54px;color:transparent}
+.sitrow .avatar.live{width:44px;height:44px}
+.kplate .avatar.live{width:28px;height:28px;color:#fff}
+.vmute{position:absolute;left:-4px;bottom:-4px;width:18px;height:18px;border-radius:50%;background:#c0392b;border:1.5px solid #fff;display:grid;place-items:center;z-index:3;box-shadow:0 1px 3px #000a}
+.vmute svg,.vbtn svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.vmute svg{width:11px;height:11px;color:#fff}
+.vbtn{display:inline-flex;align-items:center;gap:2px;padding:4px 9px}
+.vbtn svg{width:17px;height:17px}
+.vbtn.off{color:#ff9a8a;border-color:#ff9a8a88}
+#vhold{position:fixed;left:-10px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
+#vbig{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:#000c;cursor:zoom-out}
+#vbig .vv{width:min(86vw,62vh);aspect-ratio:1;object-fit:cover;border-radius:22px;box-shadow:0 10px 40px #000;background:#000}
+#vbig .vbn{position:absolute;left:0;right:0;bottom:calc(50% - min(43vw,31vh) - 34px);text-align:center;font-weight:700;color:#fff;text-shadow:0 1px 3px #000}
 /* ---------- seats ---------- */
 .seat{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;width:96px;z-index:3;transition:opacity .3s}
 .seat.out{opacity:.35}
@@ -594,7 +611,7 @@ function boot(){
 async function keepAwake(){try{if(navigator.wakeLock&&!wake){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>{wake=null})}}catch(e){}}
 function connectTable(code){
   return new Promise(res=>{
-    base=`${NS}/${code.toLowerCase()}`;online=new Set();
+    base=`${NS}/${code.toLowerCase()}`;online=new Set();pres.clear();presT=0;
     if(!window.mqtt){res(false);return}
     let done=false;
     const c=mqtt.connect(BROKER,{clientId:'t31_'+Math.random().toString(36).slice(2,12),keepalive:30,reconnectPeriod:2500,connectTimeout:12000,clean:true,
@@ -602,8 +619,8 @@ function connectTable(code){
     mq=c;
     c.on('connect',()=>{
       netStatus=null;
-      c.subscribe([`${base}/state`,`${base}/on/+`,`${base}/emo`,`${base}/zap`],{qos:1});
-      c.publish(`${base}/on/${myKey}`,JSON.stringify({nm:myName,t:Date.now()}),{retain:true,qos:1});
+      c.subscribe([`${base}/state`,`${base}/on/+`,`${base}/emo`,`${base}/zap`,`${base}/sig/${myKey}`],{qos:1});
+      pubPresence();videoSync();
       if(!done){done=true;res(true)}render();
     });
     c.on('reconnect',()=>{if(mq===c){netStatus='Reconnecting…';render()}});
@@ -620,7 +637,8 @@ function onMsg(topic,txt){
     if(!S||st.v>S.v||(st.v===S.v&&String(st.w||'')>String(S.w||''))){S=st;clearTimeout(noTableT);netStatus=null;render();schedule();trySeat()}
     return;
   }
-  if(topic.startsWith(`${base}/on/`)){const k=topic.slice(base.length+4);if(txt)online.add(k);else online.delete(k);render();schedule();trySeat();return}
+  if(topic.startsWith(`${base}/on/`)){const k=topic.slice(base.length+4);if(txt){online.add(k);let pv=null;try{pv=JSON.parse(txt)}catch(e){}pres.set(k,pv&&typeof pv==='object'?pv:{})}else{online.delete(k);pres.delete(k)}render();schedule();trySeat();videoSync();return}
+  if(topic===`${base}/sig/${myKey}`){let m;try{m=JSON.parse(txt)}catch(e){return}onSignal(m).catch(()=>{});return}
   if(topic===`${base}/zap`){let m;try{m=JSON.parse(txt)}catch(e){return}
     if(m&&typeof m.k==='string'&&S&&S.ph==='play'){const i=S.P.findIndex(p=>p.k===m.k);if(i>=0)playZap(i,String(m.f||'Someone').slice(0,14))}return}
   if(topic===`${base}/emo`){let m;try{m=JSON.parse(txt)}catch(e){return}
@@ -652,7 +670,7 @@ function isDriver(){
 }
 async function createTable(){
   const code=newCode();
-  view='table';amHost=true;solo=false;S=freshState(code);wantSeat=true;netStatus='Opening your table…';render();
+  view='table';amHost=true;solo=false;startMedia();S=freshState(code);wantSeat=true;netStatus='Opening your table…';render();
   const ok=await connectTable(code);
   if(!ok){netStatus=null;toast('Could not reach the game server. Check your connection and try again.');leaveTable();return}
   store.set('last31',code);keepAwake();publish();
@@ -660,7 +678,7 @@ async function createTable(){
 async function joinTable(code){
   code=String(code||'').toUpperCase().replace(/[^A-Z]/g,'');
   if(code.length<4){toast('Enter the table code from your invite.');return}
-  view='table';amHost=true;solo=false;S=null;joinCode=code;wantSeat=true;netStatus=`Finding table ${code}…`;render();
+  view='table';amHost=true;solo=false;startMedia();S=null;joinCode=code;wantSeat=true;netStatus=`Finding table ${code}…`;render();
   const ok=await connectTable(code);
   if(!ok){netStatus=null;toast('Could not reach the game server. Check your connection and try again.');leaveTable();return}
   store.set('last31',code);keepAwake();
@@ -669,6 +687,7 @@ async function joinTable(code){
 function send(a){hostAction(myKey,a)}
 function leaveTable(){
   clearTimeout(botTimer);clearTimeout(seatT);clearTimeout(noTableT);wantSeat=false;
+  stopMedia();vid.tapTried=false;
   if(mq){
     try{
       if(S&&!solo&&S.ph==='lobby'){const i=S.P.findIndex(p=>p.k===myKey);if(i>=0){S.P.splice(i,1);S.v++;S.w=myKey;mq.publish(`${base}/state`,JSON.stringify(S),{retain:true,qos:1})}}
@@ -677,7 +696,7 @@ function leaveTable(){
     const c=mq;mq=null;setTimeout(()=>{try{c.end(true)}catch(e){}},400);
   }
   try{if(wake){wake.release();wake=null}}catch(e){}
-  S=null;amHost=false;solo=false;view='home';overlay=null;netStatus=null;online=new Set();render();
+  S=null;amHost=false;solo=false;view='home';overlay=null;netStatus=null;online=new Set();pres.clear();presT=0;render();
 }
 function takeOver(){}
 async function shareInvite(){
@@ -692,6 +711,241 @@ function startSolo(){
   addBot();addBot();addBot();
 }
 function addBot(){if(S.P.length>=MAX)return;const used=new Set(S.P.map(p=>p.nm));const nm=BOT_NAMES.find(n=>!used.has(n))||('Bot '+S.P.length);S.P.push({k:'bot'+Math.random().toString(36).slice(2,8),nm,bot:1,n:24+Math.floor(Math.random()*4),l:0,h:[]});publish()}
+
+/* ===== video + voice chat (same approach as Kapanigans) =====
+   Everyone at the table with video on is connected straight to each other (WebRTC mesh).
+   Call setup messages ride the table's MQTT connection: <base>/sig/<key>. Who has video on rides the presence message <base>/on/<key>.
+   Each person's live picture replaces their round avatar at their seat. Tap a picture to see it big. */
+const vid={optOut:store.get('v31')==='off',local:null,asking:false,mic:store.get('v31mic')!=='off',cam:store.get('v31cam')!=='off',pcs:new Map(),streams:new Map(),els:new Map(),big:null,facing:'user',cams:[]};
+const pres=new Map(); // key -> presence payload {nm,t,vr,mic,cam}
+let presT=0;
+const ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
+const MAX_CALL=7; // people in one call (you + 6). Every phone sends its own copy to each person, so more than this gets choppy.
+const CAM_BASE={width:{ideal:320},height:{ideal:320},frameRate:{ideal:20,max:24}};
+function mediaOK(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.RTCPeerConnection)}
+function vidActive(){return !solo&&view==='table'&&!!mq}
+function pubPresence(){
+  if(!mq||!mq.connected||!base)return;
+  if(!presT)presT=Date.now();
+  mq.publish(`${base}/on/${myKey}`,JSON.stringify({nm:myName,t:presT,vr:!!vid.local&&!vid.optOut,mic:vid.mic,cam:vid.cam}),{retain:true,qos:1});
+}
+function startMedia(){
+  if(vid.optOut||vid.local||vid.asking||!mediaOK()||solo)return;
+  vid.asking=true;
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,sampleRate:{ideal:48000}},
+      video:Object.assign({facingMode:'user'},CAM_BASE)})
+    .then(s=>{
+      if(!vidActive()||vid.optOut){s.getTracks().forEach(t=>t.stop());return}
+      vid.local=s;vid.facing='user';applyTracks();s.getTracks().forEach(camWatch);countCams();
+      pubPresence();videoSync();
+    })
+    .catch(()=>{vid.denied=true;toast('Camera or mic is blocked. Allow it in your browser settings to video chat.')})
+    .finally(()=>{vid.asking=false;render()});
+}
+async function countCams(){try{vid.cams=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput')}catch(e){vid.cams=[]}render()}
+function camWatch(t){t.addEventListener('ended',()=>{if(vid.local&&vid.local.getTracks().includes(t)&&!vid.flipping){stopMedia();setTimeout(()=>{if(document.visibilityState==='visible'&&vidActive())startMedia()},800)}})}
+async function flipCamera(){
+  if(!vid.local||vid.flipping)return;vid.flipping=true;
+  let next=vid.facing==='user'?'environment':'user';
+  const old=vid.local.getVideoTracks()[0];
+  if(old){old.stop();vid.local.removeTrack(old)} // phones can only run one camera at a time
+  const grab=c=>navigator.mediaDevices.getUserMedia({video:Object.assign({},CAM_BASE,c)}).then(x=>x.getVideoTracks()[0]).catch(()=>null);
+  let track=await grab({facingMode:{exact:next}});
+  if(!track){next='user';track=await grab({facingMode:'user'})}
+  if(track){
+    track.enabled=vid.cam;camWatch(track);vid.local.addTrack(track);vid.facing=(track.getSettings&&track.getSettings().facingMode)||next;
+    for(const c of vid.pcs.values()){const snd=c.pc.getSenders().find(x=>!x.track||x.track.kind==='video');if(snd)await snd.replaceTrack(track).catch(()=>{})}
+    const v=vid.els.get(myKey);if(v){v.srcObject=null;v.srcObject=vid.local;v.play().catch(()=>{})}
+  }
+  vid.flipping=false;render();
+}
+function applyTracks(){if(!vid.local)return;vid.local.getAudioTracks().forEach(t=>t.enabled=vid.mic);vid.local.getVideoTracks().forEach(t=>t.enabled=vid.cam)}
+function stopMedia(){
+  for(const p of [...vid.pcs.keys()])closePc(p,true);
+  if(vid.local){vid.local.getTracks().forEach(t=>t.stop());vid.local=null}
+  vid.streams.clear();vid.big=null;
+  pubPresence();render();
+}
+function setMic(on){vid.mic=on;store.set('v31mic',on?'on':'off');applyTracks();pubPresence();render()}
+function setCam(on){vid.cam=on;store.set('v31cam',on?'on':'off');applyTracks();pubPresence();render()}
+function setCalls(on){
+  vid.optOut=!on;store.set('v31',on?'on':'off');
+  if(on){vid.denied=false;startMedia();toast('Video chat is on.')}else{stopMedia();toast('Video chat is off on this device.')}
+  render();
+}
+// who is in the call: everyone online with video on, seated players first (in seat order), then watchers by when they arrived.
+// Every phone works this out the same way, so both ends of each connection agree.
+function callSet(){
+  const seat=k=>{const i=S?S.P.findIndex(p=>p.k===k):-1;return i<0?99:i};
+  const ks=[...pres.entries()].filter(([k,v])=>v&&v.vr&&(k===myKey||online.has(k))).map(([k,v])=>({k,s:seat(k),t:+v.t||0}));
+  ks.sort((a,b)=>a.s-b.s||a.t-b.t||(a.k<b.k?-1:1));
+  return ks.slice(0,MAX_CALL).map(x=>x.k);
+}
+let vsT=null;
+function videoSync(){clearTimeout(vsT);vsT=setTimeout(doVideoSync,200)}
+function doVideoSync(){
+  setTimeout(tuneSenders,1500);
+  const set=vid.local?callSet():[];
+  const want=new Set(set.includes(myKey)?set.filter(k=>k!==myKey):[]);
+  for(const p of [...vid.pcs.keys()])if(!want.has(p))closePc(p,false);
+  for(const p of [...vid.streams.keys()])if(!want.has(p))vid.streams.delete(p);
+  if(vid.local)for(const p of want)if(!vid.pcs.has(p)&&myKey<p)call(p).catch(()=>closePc(p,false));
+  render();
+}
+function signal(to,m){if(mq&&mq.connected&&/^[a-z0-9]{3,24}$/i.test(to))mq.publish(`${base}/sig/${to}`,JSON.stringify(Object.assign(m,{f:myKey})),{qos:1})}
+function closePc(peer,bye){
+  const c=vid.pcs.get(peer);if(!c)return;
+  try{c.pc.close()}catch(e){}clearTimeout(c.t);vid.pcs.delete(peer);vid.streams.delete(peer);
+  if(bye)signal(peer,{y:'bye'});
+}
+function newPc(peer){
+  const pc=new RTCPeerConnection({iceServers:ICE}),c={pc,pending:[],t:null};
+  vid.local.getTracks().forEach(t=>{if(t.kind==='video'&&'contentHint' in t)t.contentHint='motion';pc.addTrack(t,vid.local)});
+  // ask for H.264 first: phones encode it in hardware, much easier on the battery than VP8
+  try{const caps=RTCRtpReceiver.getCapabilities&&RTCRtpReceiver.getCapabilities('video');
+    if(caps&&pc.getTransceivers){const h=caps.codecs.filter(x=>/h264/i.test(x.mimeType)),o=caps.codecs.filter(x=>!/h264/i.test(x.mimeType));
+      if(h.length)for(const t of pc.getTransceivers())if(t.sender&&t.sender.track&&t.sender.track.kind==='video'&&t.setCodecPreferences)t.setCodecPreferences([...h,...o])}}catch(_){}
+  // voices: RED first, so each packet carries a spare copy of the one before (fewer dropouts on cell data)
+  try{const ac=RTCRtpReceiver.getCapabilities&&RTCRtpReceiver.getCapabilities('audio');
+    if(ac&&pc.getTransceivers){const red=ac.codecs.filter(x=>/\/red$/i.test(x.mimeType)),op=ac.codecs.filter(x=>/opus/i.test(x.mimeType)),o=ac.codecs.filter(x=>!/\/red$|opus/i.test(x.mimeType));
+      if(red.length&&op.length)for(const t of pc.getTransceivers())if(t.sender&&t.sender.track&&t.sender.track.kind==='audio'&&t.setCodecPreferences)t.setCodecPreferences([...red,...op,...o])}}catch(_){}
+  pc.addEventListener('track',e=>{try{if(e.receiver&&'jitterBufferTarget' in e.receiver)e.receiver.jitterBufferTarget=e.track.kind==='audio'?150:200}catch(_){}});
+  pc.onicecandidate=e=>{if(e.candidate)signal(peer,{y:'ice',c:e.candidate.toJSON()})};
+  pc.ontrack=e=>{const st=e.streams[0]||new MediaStream([e.track]);vid.streams.set(peer,st);render()};
+  pc.onconnectionstatechange=()=>{
+    if(vid.pcs.get(peer)!==c)return;const s=pc.connectionState;
+    if(s==='connected'){render();tuneSenders()}
+    else if(s==='failed'||s==='closed'){closePc(peer,false);render();setTimeout(videoSync,2500)}
+    else if(s==='disconnected'){setTimeout(()=>{if(vid.pcs.get(peer)===c&&pc.connectionState!=='connected'){closePc(peer,false);videoSync()}},6000)}
+  };
+  vid.pcs.set(peer,c);return c;
+}
+/* call quality: voices first, video shares what's left (scaled by how many people you're sending to) */
+const VQ={level:0,good:0};
+function opusTune(sdp){return sdp.replace(/a=fmtp:(\d+) ([^\r\n]*)/g,(m,pt,p)=>{
+  if(!new RegExp('a=rtpmap:'+pt+' opus/','i').test(sdp))return m;
+  const kv=Object.fromEntries(p.split(';').map(x=>x.trim().split('=')).filter(x=>x[0]));
+  Object.assign(kv,{useinbandfec:'1',usedtx:'0',stereo:'0',maxaveragebitrate:'40000',maxplaybackrate:'48000',minptime:'10'});
+  return 'a=fmtp:'+pt+' '+Object.entries(kv).map(([k,v])=>k+'='+v).join(';')})}
+function tuneSenders(){
+  const n=Math.max(1,vid.pcs.size);
+  // [kbps, fps] per copy sent, by how many people we're sending to (1..6+). Pictures are small circles, so this is plenty.
+  const base=[[400,20],[400,20],[320,20],[260,18],[200,15],[170,15],[150,12]][Math.min(6,n)];
+  const kbps=Math.round(base[0]*[1,.6,.35][VQ.level]),fps=[base[1],base[1],Math.min(base[1],10)][VQ.level],scale=[1,1.5,2][VQ.level];
+  for(const c of vid.pcs.values())for(const snd of c.pc.getSenders()){
+    if(!snd.track||!snd.getParameters)continue;
+    const apply=full=>{try{const prm=snd.getParameters();if(!prm.encodings||!prm.encodings.length)return Promise.resolve();
+      const e=prm.encodings[0];
+      if(snd.track.kind==='audio'){e.maxBitrate=96000;if(full){e.priority='high';e.networkPriority='high'}}
+      else{e.maxBitrate=kbps*1000;e.maxFramerate=fps;e.scaleResolutionDownBy=scale;if(full){e.priority='low';e.networkPriority='low';prm.degradationPreference='maintain-framerate'}}
+      return snd.setParameters(prm)}catch(err){return Promise.reject(err)}};
+    apply(true).catch(()=>apply(false)).catch(()=>{});
+  }
+}
+setInterval(async()=>{
+  if(!vid.pcs.size){VQ.level=0;VQ.good=0;return}
+  let lost=0,cnt=0,cpu=false,bw=false,avail=Infinity,aLost=0,aJit=0;
+  for(const c of vid.pcs.values()){try{const st=await c.pc.getStats();st.forEach(r=>{
+    if(r.type==='remote-inbound-rtp'&&r.kind==='video'&&typeof r.fractionLost==='number'){lost+=r.fractionLost;cnt++}
+    if(r.type==='remote-inbound-rtp'&&r.kind==='audio'){if(typeof r.fractionLost==='number')aLost=Math.max(aLost,r.fractionLost);if(typeof r.jitter==='number')aJit=Math.max(aJit,r.jitter)}
+    if(r.type==='outbound-rtp'&&r.kind==='video'){if(r.qualityLimitationReason==='cpu')cpu=true;if(r.qualityLimitationReason==='bandwidth')bw=true}
+    if(r.type==='candidate-pair'&&r.nominated&&typeof r.availableOutgoingBitrate==='number')avail=Math.min(avail,r.availableOutgoingBitrate)})}catch(_){}}
+  const f=cnt?lost/cnt:0,was=VQ.level;
+  const short=avail<Infinity&&avail<vid.pcs.size*200000;
+  const voiceBad=aLost>.03||aJit>.05;
+  if((f>.06||cpu||(bw&&short)||voiceBad)&&VQ.level<2){VQ.level++;VQ.good=0}
+  else if(f<.02&&!cpu&&!bw&&aLost<.01&&aJit<.03){if(++VQ.good>=4&&VQ.level>0){VQ.level--;VQ.good=0}}
+  else VQ.good=0;
+  if(VQ.level!==was)tuneSenders();
+},4000);
+function flushIce(c){if(!c.pc.remoteDescription)return;for(const x of c.pending)c.pc.addIceCandidate(x).catch(()=>{});c.pending=[]}
+async function call(peer){
+  const c=newPc(peer);const off=await c.pc.createOffer();await c.pc.setLocalDescription({type:'offer',sdp:opusTune(off.sdp)});
+  signal(peer,{y:'offer',sdp:c.pc.localDescription.sdp});
+  c.t=setTimeout(()=>{if(vid.pcs.get(peer)===c&&c.pc.signalingState==='have-local-offer'){closePc(peer,false);videoSync()}},12000);
+}
+const earlyIce=new Map();
+async function onSignal(m){
+  const peer=m&&m.f;if(typeof peer!=='string'||peer===myKey)return;
+  if(m.y==='offer'&&typeof m.sdp==='string'){
+    if(!vid.local)return; // they'll retry once our camera is on
+    closePc(peer,false);const c=newPc(peer);
+    for(const x of earlyIce.get(peer)||[])c.pending.push(x);earlyIce.delete(peer);
+    await c.pc.setRemoteDescription({type:'offer',sdp:m.sdp});flushIce(c);
+    const ans=await c.pc.createAnswer();await c.pc.setLocalDescription({type:'answer',sdp:opusTune(ans.sdp)});
+    signal(peer,{y:'answer',sdp:c.pc.localDescription.sdp});
+  }else if(m.y==='answer'&&typeof m.sdp==='string'){
+    const c=vid.pcs.get(peer);if(c&&c.pc.signalingState==='have-local-offer'){await c.pc.setRemoteDescription({type:'answer',sdp:m.sdp});flushIce(c)}
+  }else if(m.y==='ice'&&m.c){
+    const c=vid.pcs.get(peer);
+    if(c&&c.pc.remoteDescription)c.pc.addIceCandidate(m.c).catch(()=>{});
+    else if(c)c.pending.push(m.c);
+    else{const a=earlyIce.get(peer)||[];a.push(m.c);earlyIce.set(peer,a.slice(-40))}
+  }else if(m.y==='bye'){closePc(peer,false);render()}
+}
+/* one <video> per person. After every render it's moved into that person's avatar at the table (or the big view);
+   anyone without a spot on screen keeps playing from a hidden holder so you still hear them. */
+function videoEl(k,stream,mine){
+  let v=vid.els.get(k);
+  if(!v){v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.setAttribute('playsinline','');v.className='vv';v.dataset.vk=k;if(mine)v.muted=true;vid.els.set(k,v)}
+  if(v.srcObject!==stream)v.srcObject=stream;
+  return v;
+}
+function vHolder(){let h=document.getElementById('vhold');if(!h){h=document.createElement('div');h.id='vhold';h.setAttribute('aria-hidden','true');document.body.appendChild(h)}return h}
+function vBig(){let b=document.getElementById('vbig');if(!b){b=document.createElement('div');b.id='vbig';b.innerHTML='<div class="vbn"></div>';document.body.appendChild(b)}return b}
+function camOnFor(k){return k===myKey?vid.cam:!(pres.get(k)&&pres.get(k).cam===false)}
+function micOnFor(k){return k===myKey?vid.mic:!(pres.get(k)&&pres.get(k).mic===false)}
+function mountVideos(){
+  const live=new Map();
+  if(vidActive()){if(vid.local)live.set(myKey,vid.local);for(const [k,s] of vid.streams)live.set(k,s)}
+  for(const [k,v] of [...vid.els])if(!live.has(k)){v.srcObject=null;v.remove();vid.els.delete(k)}
+  if(vid.big&&!(live.has(vid.big)&&camOnFor(vid.big)))vid.big=null;
+  const used=new Set();
+  const big=vBig();big.hidden=!vid.big;
+  for(const [k,st] of live){
+    const v=videoEl(k,st,k===myKey);
+    v.classList.toggle('mirror',k===myKey&&vid.facing!=='environment');
+    const showPic=camOnFor(k);
+    let spot=null;
+    if(vid.big===k){spot=big;const p=S&&S.P.find(x=>x.k===k);big.querySelector('.vbn').textContent=k===myKey?'You':(p?p.nm:(pres.get(k)||{}).nm||'')}
+    else if(showPic){for(const a of document.querySelectorAll('[data-seat] .avatar[data-vk], .sitrow .avatar[data-vk]'))if(a.dataset.vk===k&&!used.has(a)){spot=a;break}}
+    if(spot){used.add(spot);if(spot!==big)spot.classList.add('live');if(v.parentNode!==spot)spot.appendChild(v)}
+    else if(v.parentNode!==vHolder())vHolder().appendChild(v);
+    if(v.paused)v.play().catch(()=>{});
+  }
+  // little mic-off marks on seats
+  for(const a of document.querySelectorAll('[data-seat] .avatar[data-vk], .sitrow .avatar[data-vk]')){
+    const k=a.dataset.vk;if(live.has(k)&&!micOnFor(k)&&!a.querySelector('.vmute'))a.insertAdjacentHTML('beforeend','<span class="vmute" aria-label="Muted">'+VI.micoff+'</span>');
+  }
+}
+const VI={
+  mic:'<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  micoff:'<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/><path d="M3.5 3.5l17 17"/></svg>',
+  cam:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="12.5" height="10" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3z"/></svg>',
+  camoff:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="12.5" height="10" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3z"/><path d="M3.5 3.5l17 17"/></svg>',
+  flip:'<svg viewBox="0 0 24 24"><path d="M4.5 10a8 8 0 0 1 14-3.5L20 8M20 3.5V8h-4.5M19.5 14a8 8 0 0 1-14 3.5L4 16M4 20.5V16h4.5"/></svg>'};
+// mic / camera / flip buttons in the header
+function vidBtns(){
+  if(solo||!mediaOK()||vid.optOut)return '';
+  if(!vid.local)return `<button class="ghost vbtn" data-a="vstart" aria-label="Turn on video chat">${VI.cam}${vid.asking?'…':''}</button>`;
+  return `<button class="ghost vbtn ${vid.mic?'':'off'}" data-a="vmic" aria-label="${vid.mic?'Mute':'Unmute'}">${vid.mic?VI.mic:VI.micoff}</button>`+
+    `<button class="ghost vbtn ${vid.cam?'':'off'}" data-a="vcam" aria-label="${vid.cam?'Turn camera off':'Turn camera on'}">${vid.cam?VI.cam:VI.camoff}</button>`+
+    ((vid.cams||[]).length>1&&vid.cam?`<button class="ghost vbtn" data-a="vflip" aria-label="Flip camera">${VI.flip}</button>`:'');
+}
+function vidPanel(){
+  if(solo||!mediaOK())return '';
+  const n=vidActive()?callSet().length:0;
+  return `<div class="panel">${segHTML('Video &amp; voice chat','vcalls',[[1,'On'],[0,'Off']],vid.optOut?0:1,false)}
+    <p class="note">${vid.optOut?'Your camera and mic stay off at this table.':vid.local?`You're on. ${n>1?`${n} people in the call.`:'Others show up at their seats when they join.'} Tap anyone's picture to see it big.`:'Tap the camera button up top to join the call.'}${!vid.optOut?` Up to ${MAX_CALL} people at once.`:''}</p></div>`;
+}
+document.addEventListener('pointerdown',()=>{for(const v of vid.els.values())if(v.srcObject&&v.paused)v.play().catch(()=>{});
+  if(vidActive()&&!vid.local&&!vid.asking&&!vid.optOut&&!vid.tapTried){vid.tapTried=true;startMedia()}},{capture:true});
+document.addEventListener('click',e=>{
+  const v=e.target.closest&&e.target.closest('video.vv, #vbig');if(!v)return;
+  if(v.id==='vbig'||v.parentNode&&v.parentNode.id==='vbig'){vid.big=null}else{vid.big=v.dataset.vk}
+  e.stopPropagation();mountVideos();
+},{capture:true});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&vidActive()&&!vid.local&&!vid.optOut&&vid.tapTried)startMedia()});
 
 /* ===== card faces ===== */
 const PIPS={
@@ -767,7 +1021,7 @@ function logsHTML(p,big){
 }
 const chipsHTML=(p,max)=>`<div class="chips" aria-label="${p.l} lives">${Array.from({length:Math.min(+max||0,5)},(_,i)=>`<span class="chipl ${i<p.l?'':'gone'}"></span>`).join('')}</div>`;
 function hash(s){let h=0;for(const ch of s)h=(h*31+ch.charCodeAt(0))|0;return h}
-const avatar=(p,i)=>`<div class="avatar" style="--av:${AV[i%AV.length]}">${esc((p.nm||'?').trim().charAt(0).toUpperCase()||'?')}</div>`;
+const avatar=(p,i)=>`<div class="avatar${!p.bot&&vidActive()&&(p.k===myKey?vid.local&&vid.cam:vid.streams.has(p.k)&&camOnFor(p.k))?' live':''}" ${p.bot?'':`data-vk="${esc(p.k)}"`} style="--av:${AV[i%AV.length]}">${esc((p.nm||'?').trim().charAt(0).toUpperCase()||'?')}</div>`;
 
 /* ===== UI ===== */
 let toastMsg='',toastT=null;
@@ -1026,7 +1280,8 @@ function throwBills(fl){
   }
 }
 
-function render(){
+function render(){renderCore();mountVideos()}
+function renderCore(){
   const app=document.getElementById('app');
   if(view==='home'){app.className='scroll';app.innerHTML=homeHTML();renderTables();const i=document.getElementById('nm');if(i)i.value=myName;return}
   if(!S){app.className='';app.innerHTML=`<header><div class="logo">31</div><div class="hbtns"><button class="ghost" data-a="leave">Leave</button></div></header><div class="arena" style="align-items:center;justify-content:center"><p class="dealer">${esc(netStatus||'Pulling up a chair…')}</p></div>`;return}
@@ -1076,7 +1331,7 @@ function segHTML(label,act,opts,cur,dis){return `<div class="lbl">${label}</div>
 function lobbyHTML(){
   const mi=myIdx(), keys=presentKeys(), c=S.cfg, ro=!amHost;
   const lv=[[1,'1 life'],[2,'2 lives']];
-  return `<header><div class="logo">31<small>${solo?'Solo':'Table'}</small></div><div class="hbtns"><button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div></header>
+  return `<header><div class="logo">31<small>${solo?'Solo':'Table'}</small></div><div class="hbtns">${vidBtns()}<button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div></header>
   <div class="page">
     ${solo?'':`<div class="panel" style="flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap">
       <div><div class="lbl">Table code</div><div class="code">${esc(S.code)}</div></div>
@@ -1099,6 +1354,7 @@ function lobbyHTML(){
       ${segHTML('Blind knock','cfg-blind',[[0,'Off'],[1,'On: deal face down']],c.blind?1:0,ro)}
       ${iCanDeal()?`<button class="btn" data-a="startgame" ${S.P.length<2?'disabled':''}>${S.P.length<2?'Need at least 2 players':'Deal'}</button>`:`<p class="note">${mi>=0?'You have a seat. Waiting for the host to deal.':'Take a seat to play, or stay to watch.'}</p>`}
     </div>
+    ${vidPanel()}
     ${overlay==='rules'?rulesHTML():''}
     ${toastMsg?`<div class="banner"><span>${esc(toastMsg)}</span></div>`:''}
   </div>`;
@@ -1212,7 +1468,7 @@ function gameHTML(){
   return `
   <header>
     <div class="logo">31<small>Round ${+S.round||0}${solo?'':' · '+esc(S.code)}</small></div>
-    <div class="hbtns"><button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div>
+    <div class="hbtns">${vidBtns()}<button class="ghost" data-a="rules">Rules</button><button class="ghost" data-a="leave">Leave</button></div>
   </header>
   ${showTake?`<div class="banner"><span>The host left the table.</span>${mi>=0?'<button class="btn small" data-a="takeover">Host it</button>':''}</div>`:''}
   ${toastMsg?`<div class="banner"><span>${esc(toastMsg)}</span></div>`:''}
@@ -1377,6 +1633,11 @@ document.addEventListener('click',e=>{
     case 'close': overlay=null;render(); return;
     case 'takeover': takeOver(); return;
     case 'emo': sendEmote(arg); return;
+    case 'vstart': vid.denied=false;startMedia();render(); return;
+    case 'vmic': setMic(!vid.mic); return;
+    case 'vcam': setCam(!vid.cam); return;
+    case 'vflip': flipCamera(); return;
+    case 'vcalls': setCalls(arg==='1'); return;
     case 'mute': muted=!muted;store.set('mute',muted?'1':'0');if(!muted){ac();sfx('turn')}muteFab();render(); return;
   }
   if(!S)return;
